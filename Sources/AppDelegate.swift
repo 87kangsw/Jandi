@@ -501,17 +501,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let dateForWeekend = dateFormatter.date(from: date)
         guard let weekend = dateForWeekend?.dayOfWeek() else { return ContributeData(count: 0, weekend: "", date: "")}
-        guard let count = Int(attr.get(key: ParseKeys.contributionCount)) else { return ContributeData(count: 0, weekend: "", date: "")}
         
-        return ContributeData(count: count, weekend: weekend, date: date)
+        do {
+            if let count = try selectCountFrom(sentence: ele.text()) {
+                return ContributeData(count: count, weekend: weekend, date: date)
+            } else {
+                return ContributeData(count: 0, weekend: "", date: "")
+            }
+        } catch {
+            return ContributeData(count: 0, weekend: "", date: "")
+        }
+    }
+    
+    private func selectCountFrom(sentence: String) -> Int? {
+        guard let firstVerse = sentence.components(separatedBy: " ").first else {
+            return nil
+        }
+        guard let integerValue = Int(firstVerse) else {
+            return 0
+        }
+        return integerValue
     }
     
     private func parseHtmltoData(html: String) -> [ContributeData] {
+        let isoDateFormatter = ISO8601DateFormatter()
+        isoDateFormatter.formatOptions = [.withFullDate]
+    
         do {
             let doc: Document = try SwiftSoup.parse(html)
             let rects: Elements = try doc.getElementsByTag(ParseKeys.rect)
             let days: [Element] = rects.array().filter { $0.hasAttr(ParseKeys.date) }
-            let weekend = days.suffix(Consts.fetchCount)
+            let sortedDays = sortDaysByDate(days, with: isoDateFormatter)
+
+            let weekend = sortedDays.suffix(Consts.fetchCount)
             let contributeDataList = weekend.map(mapFunction)
             return contributeDataList
             
@@ -520,6 +542,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
+    private func sortDaysByDate(_ days: [Element], with dateFormatter: ISO8601DateFormatter) -> [Element] {
+        return days.sorted { (element1, element2) -> Bool in
+            guard let date1 = try? element1.attr(ParseKeys.date),
+                  let date2 = try? element2.attr(ParseKeys.date),
+                  let date1Value = dateFormatter.date(from: date1),
+                  let date2Value = dateFormatter.date(from: date2) else {
+                return false
+            }
+            return date1Value < date2Value
+        }
+    }
     
     private func parseHtmltoDataForCount(html: String) -> ContributeData {
         do {
